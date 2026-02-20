@@ -17,12 +17,15 @@ from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
 
+from aden_tools.credentials.auth_store import AuthCredentialStore
+
 if TYPE_CHECKING:
     from aden_tools.credentials import CredentialStoreAdapter
 
 # Import register_tools from each tool module
 from .apollo_tool import register_tools as register_apollo
 from .bigquery_tool import register_tools as register_bigquery
+from .browser_use_tool import register_tools as register_browser_agent
 from .calcom_tool import register_tools as register_calcom
 from .calendar_tool import register_tools as register_calendar
 from .csv_tool import register_tools as register_csv
@@ -76,6 +79,7 @@ from .web_search_tool import register_tools as register_web_search
 def register_all_tools(
     mcp: FastMCP,
     credentials: CredentialStoreAdapter | None = None,
+    auth_store: AuthCredentialStore | None = None,
 ) -> list[str]:
     """
     Register all tools with a FastMCP server.
@@ -88,6 +92,7 @@ def register_all_tools(
     Returns:
         List of registered tool names
     """
+    print("Registering all tools with MCP server... auth_store", auth_store)
     # Tools that don't need credentials
     register_example(mcp)
     register_web_scrape(mcp)
@@ -140,6 +145,9 @@ def register_all_tools(
     register_tech_stack_detector(mcp)
     register_subdomain_enumerator(mcp)
     register_risk_scorer(mcp)
+
+    # Register browser use agent tools
+    register_browser_agent(mcp, credentials=credentials, auth_store=auth_store)
 
     # Return the list of all registered tool names
     return list(mcp._tool_manager._tools.keys())

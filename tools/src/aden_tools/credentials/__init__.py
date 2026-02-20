@@ -54,6 +54,7 @@ To add a new credential:
 """
 
 from .apollo import APOLLO_CREDENTIALS
+from .auth_store import AuthCredentialStore
 from .base import CredentialError, CredentialSpec
 from .bigquery import BIGQUERY_CREDENTIALS
 from .browser import get_aden_auth_url, get_aden_setup_url, open_browser
@@ -111,6 +112,8 @@ __all__ = [
     "CredentialError",
     # Credential store adapter (replaces deprecated CredentialManager)
     "CredentialStoreAdapter",
+    # Auth credential store for Browser Use Automation tools
+    "AuthCredentialStore",
     # Health check utilities
     "HealthCheckResult",
     "check_credential_health",

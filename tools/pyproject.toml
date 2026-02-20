@@ -32,7 +32,7 @@ dependencies = [
     "dnspython>=2.4.0",
     "resend>=2.0.0",
     "framework",
-    
+    "browser-use==0.11.9",
 ]
 
 [project.optional-dependencies]
