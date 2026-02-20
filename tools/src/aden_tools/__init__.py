@@ -19,6 +19,7 @@ __version__ = "0.1.0"
 # Credential management (no external dependencies)
 from .credentials import (
     CREDENTIAL_SPECS,
+    AuthCredentialStore,
     CredentialError,
     CredentialSpec,
     CredentialStoreAdapter,
@@ -47,6 +48,7 @@ __all__ = [
     "CredentialSpec",
     "CredentialError",
     "CREDENTIAL_SPECS",
+    "AuthCredentialStore",
     # MCP registration (lazy loaded)
     "register_all_tools",
 ]
