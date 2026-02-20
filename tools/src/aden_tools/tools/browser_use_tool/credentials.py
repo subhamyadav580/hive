@@ -93,7 +93,10 @@ class CredentialResolver:
             try:
                 key = self.credentials.get(provider_normalized)
                 if key:
-                    logger.debug(f"API key resolved from credential store for {provider_normalized}")
+                    logger.debug(
+                        f"API key resolved from credential store "
+                        f"for {provider_normalized}"
+                    )
                     return key
             except Exception:
                 logger.exception("Credential store lookup failed")
