@@ -90,7 +90,10 @@ def mock_auth_credentials():
 def mock_browser_execution():
     """Mock the actual browser execution at the correct import location."""
     # CRITICAL: Patch where it's USED, not where it's DEFINED
-    with patch("aden_tools.tools.browser_use_tool.registration.run_browser_task", new_callable=AsyncMock) as mock:
+    with patch(
+        "aden_tools.tools.browser_use_tool.registration.run_browser_task",
+        new_callable=AsyncMock,
+    ) as mock:
         mock.return_value = {
             "success": True,
             "result": "Task completed successfully",
