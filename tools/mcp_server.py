@@ -70,7 +70,6 @@ from aden_tools.tools import register_all_tools  # noqa: E402
 
 credentials = CredentialStoreAdapter.default()
 
-
 # Tier 1: Validate startup-required credentials (if any)
 try:
     credentials.validate_startup()
