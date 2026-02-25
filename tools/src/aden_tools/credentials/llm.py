@@ -10,7 +10,7 @@ LLM_CREDENTIALS = {
     "anthropic": CredentialSpec(
         env_var="ANTHROPIC_API_KEY",
         tools=["browser_use_task", "browser_use_auth_task", "browser_use_vision_task"],
-        node_types=["llm_generate", "llm_tool_use"],
+        node_types=["llm_generate", "llm_tool_use", "event_loop"],
         required=False,  # Not required - agents can use other providers via LiteLLM
         startup_required=False,  # MCP server doesn't need LLM credentials
         help_url="https://console.anthropic.com/settings/keys",
@@ -34,7 +34,7 @@ LLM_CREDENTIALS = {
     "openai": CredentialSpec(
         env_var="OPENAI_API_KEY",
         tools=["browser_use_task", "browser_use_auth_task", "browser_use_vision_task"],
-        node_types=["llm_generate", "llm_tool_use"],
+        node_types=["llm_generate", "llm_tool_use", "event_loop", "event_loop"],
         required=False,
         startup_required=False,
         help_url="https://platform.openai.com/api-keys",
@@ -58,7 +58,7 @@ LLM_CREDENTIALS = {
     "groq": CredentialSpec(
         env_var="GROQ_API_KEY",
         tools=["browser_use_task", "browser_use_auth_task", "browser_use_vision_task"],
-        node_types=["llm_generate", "llm_tool_use"],
+        node_types=["llm_generate", "llm_tool_use", "event_loop"],
         required=False,
         startup_required=False,
         help_url="https://console.groq.com/keys",
@@ -82,7 +82,7 @@ LLM_CREDENTIALS = {
     "azure_openai": CredentialSpec(
         env_var="AZURE_OPENAI_API_KEY",
         tools=["browser_use_task", "browser_use_auth_task", "browser_use_vision_task"],
-        node_types=["llm_generate", "llm_tool_use"],
+        node_types=["llm_generate", "llm_tool_use", "event_loop"],
         required=False,
         startup_required=False,
         help_url="https://portal.azure.com/",

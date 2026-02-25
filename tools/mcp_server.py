@@ -66,18 +66,9 @@ from starlette.requests import Request  # noqa: E402
 from starlette.responses import PlainTextResponse  # noqa: E402
 
 from aden_tools.credentials import CredentialError, CredentialStoreAdapter  # noqa: E402
-from aden_tools.credentials.auth_store import get_auth_store  # noqa: E402
 from aden_tools.tools import register_all_tools  # noqa: E402
 
 credentials = CredentialStoreAdapter.default()
-
-# ── NEW: Initialize auth credential store ──
-try:
-    auth_store = get_auth_store()
-    logger.info("Auth credential store initialized")
-except Exception as e:
-    logger.warning(f"Auth credential store initialization failed: {e}")
-    auth_store = None  # Non-fatal - tools will handle gracefully
 
 
 # Tier 1: Validate startup-required credentials (if any)
@@ -91,7 +82,7 @@ except CredentialError as e:
 mcp = FastMCP("tools")
 
 # Register all tools with the MCP server, passing credential store
-tools = register_all_tools(mcp, credentials=credentials, auth_store=auth_store)
+tools = register_all_tools(mcp, credentials=credentials)
 # Only print to stdout in HTTP mode (STDIO mode requires clean stdout for JSON-RPC)
 if "--stdio" not in sys.argv:
     logger.info(f"Registered {len(tools)} tools: {tools}")

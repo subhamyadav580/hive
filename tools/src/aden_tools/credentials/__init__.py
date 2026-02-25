@@ -54,7 +54,6 @@ To add a new credential:
 """
 
 from .apollo import APOLLO_CREDENTIALS
-from .auth_store import AuthCredentialStore
 from .base import CredentialError, CredentialSpec
 from .bigquery import BIGQUERY_CREDENTIALS
 from .brevo import BREVO_CREDENTIALS
@@ -123,8 +122,6 @@ __all__ = [
     "CredentialError",
     # Credential store adapter (replaces deprecated CredentialManager)
     "CredentialStoreAdapter",
-    # Auth credential store for Browser Use Automation tools
-    "AuthCredentialStore",
     # Health check utilities
     "BaseHttpHealthChecker",
     "HealthCheckResult",

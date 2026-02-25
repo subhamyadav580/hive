@@ -314,7 +314,7 @@ class TestCredentialSpecs:
 
         spec = CREDENTIAL_SPECS["anthropic"]
         assert spec.env_var == "ANTHROPIC_API_KEY"
-        assert spec.tools == []
+        assert spec.tools == ["browser_use_task", "browser_use_auth_task", "browser_use_vision_task"]
         assert "event_loop" in spec.node_types
         assert spec.required is False
         assert spec.startup_required is False

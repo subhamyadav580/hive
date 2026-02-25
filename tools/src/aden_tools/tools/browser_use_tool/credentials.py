@@ -1,26 +1,44 @@
 """
 Credential resolution for browser automation.
 
-Implements priority-based resolution with NO implicit fallback.
-Explicit configuration is required if no provider is detected.
+This module implements strict, priority-based credential resolution
+with ZERO implicit provider fallback.
 
-Resolution Strategy:
+It enforces explicit configuration and predictable behavior.
+
+────────────────────────────────────────────────────────────
+
+Resolution Strategy
+────────────────────────────────────────────────────────────
 
 API Key Priority:
     1. Explicit api_key parameter
     2. Credential store (encrypted)
     3. Environment variable
+    4. ERROR (no silent fallback)
 
-Provider/Model Priority:
+Provider / Model Priority:
     1. Explicit provider/model
     2. Credential store auto-detection
     3. Environment variable auto-detection
     4. ERROR (no silent fallback)
 
-Security:
-    - Keys resolved just-in-time
-    - Never logged
-    - Never cached
+────────────────────────────────────────────────────────────
+
+Security Guarantees
+────────────────────────────────────────────────────────────
+
+• API keys are resolved just-in-time
+• Keys are NEVER logged
+• Keys are NEVER cached
+• No implicit provider assumptions
+• No hidden fallback providers
+• Deterministic resolution order
+
+This design prevents:
+    - Accidental production usage
+    - Cross-provider misconfiguration
+    - Silent credential drift
 """
 
 from __future__ import annotations
@@ -50,11 +68,30 @@ class CredentialResolver:
     """
     Resolves LLM provider, model, and API key.
 
-    This class enforces explicit configuration and never silently
-    falls back to a default provider.
+    Design Principles:
+    ------------------
+    - Explicit configuration preferred
+    - No silent provider fallback
+    - Deterministic priority order
+    - Clear error messaging
+    - Secure key handling
+
+    This class does NOT:
+        - Validate API key correctness
+        - Test connectivity
+        - Cache credentials
+        - Store keys in memory beyond resolution
     """
 
     def __init__(self, credentials: CredentialStoreAdapter | None = None):
+        """
+        Initialize resolver.
+
+        Args:
+            credentials:
+                Optional encrypted credential store adapter.
+                If provided, used for secure key resolution and provider detection.
+        """
         self.credentials = credentials
 
         logger.debug(
@@ -72,10 +109,28 @@ class CredentialResolver:
         explicit_key: str | None = None,
     ) -> str:
         """
-        Resolve API key for provider.
+        Resolve API key for a given provider.
+
+        Resolution Order:
+            1. Explicit parameter
+            2. Credential store
+            3. Environment variable
+            4. ERROR
+
+        Args:
+            provider:
+                Provider name (required).
+
+            explicit_key:
+                Optional API key passed directly by caller.
+
+        Returns:
+            API key string.
 
         Raises:
-            ValueError if no key found.
+            ValueError:
+                - If provider not specified
+                - If no key found
         """
 
         if not provider:
@@ -83,33 +138,40 @@ class CredentialResolver:
 
         provider_normalized = provider.lower().strip()
 
-        # 1. Explicit key
+        # 1️⃣ Explicit key
         if explicit_key:
-            logger.debug("Using explicit API key for provider '%s'", provider_normalized)
+            logger.debug(
+                "Using explicit API key for provider '%s'",
+                provider_normalized,
+            )
             return explicit_key
 
-        # 2. Credential store
+        # 2️⃣ Credential store
         if self.credentials is not None:
             try:
                 key = self.credentials.get(provider_normalized)
                 if key:
                     logger.debug(
-                        f"API key resolved from credential store "
-                        f"for {provider_normalized}"
+                        "API key resolved from credential store "
+                        "for provider '%s'",
+                        provider_normalized,
                     )
                     return key
             except Exception:
                 logger.exception("Credential store lookup failed")
 
-        # 3. Environment variable
+        # 3️⃣ Environment variable
         env_var = PROVIDER_ENV_VARS.get(provider_normalized)
         if env_var:
             key = os.getenv(env_var)
             if key:
-                logger.debug("API key resolved from environment variable '%s'", env_var)
+                logger.debug(
+                    "API key resolved from environment variable '%s'",
+                    env_var,
+                )
                 return key
 
-        # No key found
+        # 4️⃣ ERROR — No fallback allowed
         available = ", ".join(PROVIDER_ENV_VARS.keys())
         suggested_env = PROVIDER_ENV_VARS.get(
             provider_normalized,
@@ -125,7 +187,10 @@ class CredentialResolver:
             f"3. Pass api_key parameter explicitly\n"
         )
 
-        logger.error("API key resolution failed for provider '%s'", provider_normalized)
+        logger.error(
+            "API key resolution failed for provider '%s'",
+            provider_normalized,
+        )
         raise ValueError(error_msg)
 
     # ─────────────────────────────────────────
@@ -139,13 +204,37 @@ class CredentialResolver:
         use_vision: bool = False,
     ) -> tuple[str, str]:
         """
-        Resolve provider and model.
+        Resolve provider and model pair.
+
+        Resolution Order:
+            1. Explicit provider + model
+            2. Credential store auto-detection
+            3. Environment variable auto-detection
+            4. ERROR (no silent fallback)
+
+        Model Resolution:
+            If provider is determined but model is missing,
+            default model is selected via get_default_model().
+
+        Args:
+            provider:
+                Optional provider override.
+
+            model:
+                Optional model override.
+
+            use_vision:
+                Whether multimodal capability is required.
+                Influences default model selection.
+
+        Returns:
+            Tuple of (provider, model)
 
         Raises:
-            ValueError if provider cannot be determined.
+            ValueError:
+                If provider cannot be determined.
         """
 
-        # Normalize explicit provider early
         provider_normalized = provider.lower().strip() if provider else None
 
         # 1️⃣ Explicit provider + model
@@ -169,7 +258,9 @@ class CredentialResolver:
                         )
                         break
                 except Exception:
-                    logger.exception("Credential store availability check failed")
+                    logger.exception(
+                        "Credential store availability check failed"
+                    )
 
         # 3️⃣ Environment variable auto-detection
         if not provider_normalized:
@@ -183,7 +274,7 @@ class CredentialResolver:
                     )
                     break
 
-        # 4️⃣ ERROR if still not resolved
+        # 4️⃣ ERROR — No fallback
         if not provider_normalized:
             available = ", ".join(PROVIDER_ENV_VARS.keys())
             error_msg = (

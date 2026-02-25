@@ -13,7 +13,7 @@ Security:
 - Never logs credentials
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from fastmcp import FastMCP
 
@@ -23,12 +23,10 @@ from .execution import run_browser_task
 
 if TYPE_CHECKING:
     from aden_tools.credentials import CredentialStoreAdapter
-    from aden_tools.credentials.auth_store import AuthCredentialStore
 
+import logging
 
-# ─────────────────────────────────────────────
-# CONSTANTS
-# ─────────────────────────────────────────────
+logger = logging.getLogger(__name__)
 
 MAX_STEPS_MIN: Final[int] = 1
 MAX_STEPS_MAX: Final[int] = 50
@@ -43,41 +41,31 @@ DEFAULT_AUTH_TIMEOUT_MS: Final[int] = 90_000
 DEFAULT_VISION_TIMEOUT_MS: Final[int] = 120_000
 
 
-# ─────────────────────────────────────────────
 # TOOL REGISTRATION
-# ─────────────────────────────────────────────
-
 def register_tools(
     mcp: FastMCP,
     credentials: "CredentialStoreAdapter | None" = None,
-    auth_store: "AuthCredentialStore | None" = None,
 ) -> None:
     """
-    Register Browser-Use tools with an MCP server.
+    Register browser automation tools with the MCP server.
 
-    Parameters
-    ----------
-    mcp : FastMCP
-        The MCP server instance.
-    credentials : CredentialStoreAdapter | None
-        Global credential resolver for LLM providers.
-    auth_store : AuthCredentialStore | None
-        Secure store for website login credentials.
+    Args:
+        mcp: FastMCP instance
+        credentials: CredentialStoreAdapter instance, or None
 
-    Notes
-    -----
-    - LLM provider resolution follows Hive priority rules.
-    - Browser-Use does NOT manage provider state directly.
+    Notes:
+        - Register tools with FastMCP server
+        - Supports both browser automation and vision tasks
+        - Validates input and resolves credentials
     """
-
-    resolver = CredentialResolver(credentials)
-    auth_resolver = AuthCredentialResolver(auth_store)
+    credential_resolver = CredentialResolver(credentials)
+    auth_resolver = AuthCredentialResolver(credentials)
 
     # ─────────────────────────────────────────
     # INTERNAL EXECUTION
     # ─────────────────────────────────────────
 
-    async def _execute_browser_task(
+    def _execute_browser_task(
         *,
         task: str,
         allowed_domains: list[str] | None,
@@ -90,17 +78,36 @@ def register_tools(
         api_key: str | None,
     ) -> dict:
         """
-        Internal execution wrapper.
+        Internal execution pipeline for browser automation tasks.
 
-        Performs:
-        - Input validation
-        - Provider resolution
-        - API key resolution
-        - Delegation to browser execution engine
+        Validates input and resolves credentials before executing the task.
+
+        Returns a structured result dictionary with keys:
+
+            - success (bool)
+            - status (str)
+            - error (str | None)
+
+        Status types:
+            - configuration_error
+            - timeout
+            - security_blocked
+            - execution_error
+
+        Args:
+            task (str): Natural language instruction
+            allowed_domains (list[str] | None): Optional allowlist
+            max_steps (int): Maximum number of steps to execute
+            timeout_ms (int): Timeout in milliseconds
+            headless (bool): Disable GUI
+            provider (str | None): LLM provider override
+            model (str | None): Model override
+            use_vision (bool): Enable vision mode
+            api_key (str | None): Explicit API key override
+
+        Returns:
+            dict: Structured result dictionary
         """
-
-        # ── Validation ──────────────────────
-
         if not task or not task.strip():
             return {
                 "success": False,
@@ -124,43 +131,47 @@ def register_tools(
 
         # ── Resolve provider + model ────────
 
-        provider_resolved, model_resolved = resolver.resolve_provider_and_model(
-            provider,
-            model,
-            use_vision,
-        )
-
-        # ── Resolve API key ─────────────────
-
         try:
-            resolved_key = resolver.resolve_api_key(provider_resolved, api_key)
-        except ValueError as exc:
+            provider, model = credential_resolver.resolve_provider_and_model(
+                provider=provider,
+                model=model,
+                use_vision=use_vision,
+            )
+
+            api_key = credential_resolver.resolve_api_key(
+                provider=provider,
+                explicit_key=api_key,
+            )
+
+        except ValueError as e:
+            logger.info("Browser task configuration error")
+
             return {
                 "success": False,
                 "status": "configuration_error",
-                "error": str(exc),
+                "error": str(e),
+                "help": (
+                    "Provide provider and model explicitly, or configure "
+                    "an API key via environment variable or credential store."
+                ),
             }
 
         # ── Execute browser task ────────────
 
-        return await run_browser_task(
+        return run_browser_task(
             task=task,
             allowed_domains=allowed_domains,
             max_steps=max_steps,
             timeout_ms=timeout_ms,
             headless=headless,
             use_vision=use_vision,
-            provider=provider_resolved,
-            model=model_resolved,
-            api_key=resolved_key,
+            provider=provider,
+            model=model,
+            api_key=api_key,
         )
 
-    # ─────────────────────────────────────────
-    # PRIMARY TOOL
-    # ─────────────────────────────────────────
-
     @mcp.tool()
-    async def browser_use_task(
+    def browser_use_task(
         task: str,
         allowed_domains: list[str] | None = None,
         max_steps: int = DEFAULT_MAX_STEPS,
@@ -172,26 +183,50 @@ def register_tools(
         api_key: str | None = None,
     ) -> dict:
         """
-        Execute a natural-language browser automation task.
+        General natural-language browsing.
 
-        Security Guarantees:
-        - Enforces step limits
-        - Enforces timeout limits
-        - Supports domain allowlisting
-        - Never logs credentials
+        Args:
+            task: Natural language instruction.
+            allowed_domains: Optional allowlist of domains.
+            max_steps: Maximum steps to execute (1-50).
+            timeout_ms: Maximum timeout in milliseconds (5000-300000).
+            headless: Whether to run the browser headlessly.
+            provider: Optional LLM provider.
+            model: Optional model name to use.
+            use_vision: Whether to use vision capabilities.
+            api_key: Optional API key to use.
 
-        Returns
-        -------
-        dict
-            {
-                success: bool,
-                result?: str,
-                error?: str,
-                status?: str
-            }
+        Returns:
+            Structured result dictionary with keys:
+
+            On Success:
+                {
+                    "success": True,
+                    "task": str,
+                    "result": str,
+                    "steps_taken": int,
+                    "max_steps": int,
+                    "execution_time_ms": int,
+                    "model_used": str,
+                    "provider_used": str,
+                    "vision_enabled": bool,
+                }
+
+            On Failure:
+                {
+                    "success": False,
+                    "error": str,
+                    "status": str,
+                    "execution_time_ms": int,
+                }
+
+        Status Types:
+            - timeout
+            - security_blocked
+            - configuration_error
+            - execution_error
         """
-
-        return await _execute_browser_task(
+        return _execute_browser_task(
             task=task,
             allowed_domains=allowed_domains,
             max_steps=max_steps,
@@ -203,16 +238,11 @@ def register_tools(
             api_key=api_key,
         )
 
-    # ─────────────────────────────────────────
-    # AUTH TOOL
-    # ─────────────────────────────────────────
-
     @mcp.tool()
-    async def browser_use_auth_task(
+    def browser_use_auth_task(
         task: str,
         credential_ref: str | None = None,
-        username: str | None = None,
-        password: str | None = None,
+        explicit_credentials: dict[str, Any] | None = None,
         allowed_domains: list[str] | None = None,
         max_steps: int = DEFAULT_AUTH_MAX_STEPS,
         timeout_ms: int = DEFAULT_AUTH_TIMEOUT_MS,
@@ -221,49 +251,79 @@ def register_tools(
         model: str | None = None,
         api_key: str | None = None,
     ) -> dict:
+
         """
-        Execute authenticated browser task.
+        Execute a browser automation task with authentication.
 
-        Preferred:
-            Use credential_ref (secure reference)
+        This function:
 
-        Fallback:
-            Provide username/password explicitly (less secure)
+            - Resolves credentials using the provided credential_ref or explicit_credentials
+            - Injects resolved credentials into the task
+            - Executes the task with the injected credentials
+
+        Args:
+            task:
+                Natural language instruction
+            credential_ref:
+                Optional credential reference for the task
+            explicit_credentials:
+                Optional explicit credentials to be injected into the task
+            allowed_domains:
+                Optional allowlist of domains
+            max_steps:
+                Maximum number of steps to execute
+            timeout_ms:
+                Timeout in milliseconds
+            headless:
+                Disable GUI
+            provider:
+                Optional provider override
+            model:
+                Optional model override
+            api_key:
+                Optional API key override
+
+        Returns:
+
+            Structured result dictionary with keys:
+                - success (bool)
+                - status (str)
+                - error (str | None)
+                - execution_time_ms (int)
         """
-
-        if credential_ref and (username or password):
+        if credential_ref and explicit_credentials:
             return {
                 "success": False,
-                "status": "configuration_error",
-                "error": "Provide either credential_ref OR username/password, not both.",
+                "error": "Provide either credential_ref OR explicit_credentials, not both.",
             }
 
         creds = auth_resolver.resolve_credentials(
             credential_ref=credential_ref,
-            username=username,
-            password=password,
+            explicit_credentials=explicit_credentials,
         )
 
         if creds is None:
+            logger.info("browser_use_auth_task: no credentials provided")
             return {
                 "success": False,
                 "status": "configuration_error",
                 "error": "No credentials provided.",
+                "help": (
+                    "Provide either a valid credential_ref pointing to a stored "
+                    "credential or explicit_credentials dictionary."
+                ),
             }
 
-        resolved_username, resolved_password = creds
 
         final_task = auth_resolver.inject_credentials_into_task(
             task=task,
-            username=resolved_username,
-            password=resolved_password,
+            credential_data=creds,
         )
 
-        # Clear memory references
-        resolved_username = None
-        resolved_password = None
+        # Clear memory reference
+        creds = None
 
-        return await _execute_browser_task(
+        return _execute_browser_task(
             task=final_task,
             allowed_domains=allowed_domains,
             max_steps=max_steps,
@@ -280,7 +340,7 @@ def register_tools(
     # ─────────────────────────────────────────
 
     @mcp.tool()
-    async def browser_use_vision_task(
+    def browser_use_vision_task(
         task: str,
         allowed_domains: list[str] | None = None,
         max_steps: int = DEFAULT_MAX_STEPS,
@@ -290,11 +350,41 @@ def register_tools(
         model: str | None = None,
         api_key: str | None = None,
     ) -> dict:
-        """
-        Execute browser task with vision enabled.
-        """
 
-        return await _execute_browser_task(
+        """
+        Execute a browser automation task with vision capabilities.
+
+        This function:
+            - Enables vision mode, selecting a model that supports vision capabilities
+            - Executes the task with the selected model
+
+        Args:
+            task:
+                Natural language instruction
+            allowed_domains:
+                Optional allowlist of domains
+            max_steps:
+                Maximum number of steps to execute
+            timeout_ms:
+                Timeout in milliseconds
+            headless:
+                Disable GUI
+            provider:
+                Optional provider override
+            model:
+                Optional model override
+            api_key:
+                Optional API key override
+
+        Returns:
+            Structured result dictionary with keys:
+
+                - success (bool)
+                - status (str)
+                - error (str | None)
+                - execution_time_ms (int)
+        """
+        return _execute_browser_task(
             task=task,
             allowed_domains=allowed_domains,
             max_steps=max_steps,
@@ -305,89 +395,4 @@ def register_tools(
             use_vision=True,
             api_key=api_key,
         )
-
-    # ─────────────────────────────────────────
-    # AUTH CREDENTIAL MANAGEMENT
-    # ─────────────────────────────────────────
-
-    @mcp.tool()
-    def save_auth_credential(
-        ref_id: str,
-        username: str,
-        password: str,
-        two_factor_secret: str | None = None,
-        notes: str | None = None,
-    ) -> dict:
-        """Save website login credentials securely."""
-
-        if not auth_store:
-            return {"success": False, "error": "Auth credential store not configured."}
-
-        metadata = {}
-        if two_factor_secret:
-            metadata["two_factor_secret"] = two_factor_secret
-        if notes:
-            metadata["notes"] = notes
-
-        try:
-            auth_store.save_auth_credential(
-                ref_id=ref_id,
-                username=username,
-                password=password,
-                metadata=metadata or None,
-            )
-            return {"success": True, "ref_id": ref_id}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    @mcp.tool()
-    def list_auth_credentials() -> dict:
-        """List saved auth credential references."""
-        if not auth_store:
-            return {"success": False, "error": "Auth credential store not configured"}
-
-        try:
-            refs = auth_store.list_auth_credentials()
-            return {
-                "success": True,
-                "credentials": refs,
-                "count": len(refs),
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    @mcp.tool()
-    def delete_auth_credential(ref_id: str) -> dict:
-        """Delete auth credential by reference ID."""
-        if not auth_store:
-            return {"success": False, "error": "Auth credential store not configured"}
-
-        try:
-            deleted = auth_store.delete_auth_credential(ref_id)
-            if deleted:
-                return {"success": True, "message": f"{ref_id} deleted"}
-            return {"success": False, "error": f"{ref_id} not found"}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    @mcp.tool()
-    def get_auth_credential_info(ref_id: str) -> dict:
-        """Get non-sensitive info about an auth credential (e.g. for debugging)."""
-        if not auth_store:
-            return {"success": False, "error": "Auth credential store not configured"}
-
-        try:
-            creds = auth_store.get_auth_credential(ref_id)
-            if not creds:
-                return {"success": False, "error": f"{ref_id} not found"}
-
-            info = {k: v for k, v in creds.items() if k != "password"}
-
-            return {
-                "success": True,
-                "ref_id": ref_id,
-                "info": info,
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
 
